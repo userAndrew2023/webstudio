@@ -1,4 +1,4 @@
-import sqlite3
+import mysql.connector
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -53,18 +53,14 @@ def main():
 
 if __name__ == '__main__':
     try:
-        sqlite_connection = sqlite3.connect('sqlite_python.db')
+
         service = Service(executable_path="chromedriver.exe")
         driver = webdriver.Chrome(service=service)
         main()
 
-    except sqlite3.Error as error:
-        print("Ошибка при подключении к sqlite", error)
     except Exception as e:
         print(e)
     finally:
-        if sqlite_connection:
-            sqlite_connection.close()
-            print("Соединение с SQLite закрыто")
         driver.quit()
+
 
