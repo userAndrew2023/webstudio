@@ -1,5 +1,4 @@
 import enum
-import sqlite3
 import threading
 
 from aiogram import Bot, Dispatcher, types
@@ -88,6 +87,16 @@ async def create_task(message: types.Message):
     except KeyError:
         users[message.from_user['username']] = User(Actions.ACTION_CREATE_TASK)
         await message.reply("Дайте ссылку на страницу с объявлениями Avito", reply_markup=markup)
+
+
+@dp.message_handler(lambda message: message.text == "📱Контакты")
+async def contacts(message: types.Message):
+    await message.reply("Контакты: \nперечисление")
+
+
+@dp.message_handler(lambda message: message.text == "😎Аккаунт")
+async def account(message: types.Message):
+    await message.reply(f"ID: {message.from_user.id}\nАктивных задач: {len(tasks[message.from_user['username']])}")
 
 
 delete_callback = CallbackData("delete", "id")
@@ -256,11 +265,12 @@ class Tracking:
             if bool(driver.find_elements(By.CLASS_NAME, "items-extraTitle-JFe8_")):
                 elem = driver.find_elements(By.XPATH, "//div[contains(concat(' ', @class, ' '), 'items-items-kAJAg')]")
                 list_ = elem[0].text.split("\n")
+                list_2 = elem[0].find_elements(By.CLASS_NAME, "iva-item-sliderLink-uLz1v")
                 for index, i in enumerate(list_):
                     try:
                         if "₽" in list_[index + 1] and type(
                                 int(list_[index + 1].replace("₽", "").replace(" ", ""))) == int:
-                            self.products.append(Product(recursive_space(list_[index]), list_[index + 1]))
+                            self.products.append(Product(recursive_space(list_[index]), list_[index + 1], list_2[index]))
                     except Exception:
                         pass
             else:
@@ -271,11 +281,13 @@ class Tracking:
                         elem = driver.find_elements(By.XPATH,
                                                     "//div[contains(concat(' ', @class, ' '), 'items-items-kAJAg')]")
                         list_ = elem[0].text.split("\n")
+                        list_2 = elem[0].find_elements(By.CLASS_NAME, "iva-item-sliderLink-uLz1v")
                         for index, i in enumerate(list_):
                             try:
                                 if "₽" in list_[index + 1] and type(
                                         int(list_[index + 1].replace("₽", "").replace(" ", ""))) == int:
-                                    self.products.append(Product(recursive_space(list_[index]), list_[index + 1]))
+                                    self.products.append(Product(recursive_space(list_[index]), list_[index + 1],
+                                                                 list_2[index]))
                             except Exception:
                                 pass
             con = sl.connect('database.db')
@@ -292,18 +304,19 @@ class Tracking:
                 sql = 'INSERT INTO PRODUCTS (name, price, url, user_id) values (?, ?, ?, ?)'
                 data = []
                 for i in self.products:
-                    data.append((i.title, i.price, self.task.user_id))
+                    data.append((i.title, i.price, i.url, self.task.user_id))
                 with con:
                     con.executemany(sql, data)
 
             else:
                 with con:
                     data = list(con.execute(f"SELECT * FROM PRODUCTS WHERE user_id = '{self.task.user_id}'"))
+                    data = data[1:]
 
                 ins = 'INSERT INTO PRODUCTS (name, price, url, user_id) values (?, ?, ?, ?)'
                 new_data = []
                 for i in self.products:
-                    new_data.append((i.title, i.price, self.task.user_id))
+                    new_data.append((i.title, i.price, i.url, self.task.user_id))
 
                 to_ret = [i for i in new_data if i not in data]
 
@@ -323,13 +336,17 @@ class Tracking:
         self.track(first_launch=True)
         self.active = True
 
+        con = sl.connect('database.db')
+        con.executemany("INSERT INTO TASKS (title, url, user_id) values (?, ?, ?)", [(self.task.title, self.task.url,
+                                                                                      self.task.user_id)])
+
         if self.task.time_pref == TimePreferences.NOW:
             while self.active:
                 track = self.track()
                 if type(track) == list:
                     for i in track:
-                        bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}\nCсылка:")
-                time.sleep(10)
+                        bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}\nCсылка:{i[2]}")
+                time.sleep(60 * 15)
         elif self.task.time_pref == TimePreferences.EVENING:
             while self.active:
                 current_time = datetime.time()
@@ -338,7 +355,7 @@ class Tracking:
                     track = self.track()
                     if type(track) == list:
                         for i in track:
-                            bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}")
+                            bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}\nCсылка:{i[2]}")
                     time.sleep(86400)
 
         elif self.task.time_pref == TimePreferences.MORNING:
@@ -348,18 +365,15 @@ class Tracking:
                     track = self.track()
                     if type(track) == list:
                         for i in track:
-                            bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}")
+                            bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}\nCсылка:{i[2]}")
                     time.sleep(86400)
         elif self.task.time_pref == TimePreferences.ONCE_A_WEEK:
             while self.active:
                 track = self.track()
                 if type(track) == list:
                     for i in track:
-                        bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}")
+                        bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}\nCсылка:{i[2]}")
                 time.sleep(604800)
-
-    def stop_tracking(self):
-        self.active = False
 
 
 def grouper(iterable, n):
@@ -368,9 +382,10 @@ def grouper(iterable, n):
 
 
 class Product:
-    def __init__(self, title, price):
+    def __init__(self, title, price, url):
         self.title = title
         self.price = price
+        self.url = url
 
     def __str__(self):
         return self.title + " " + self.price
