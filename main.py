@@ -1,10 +1,19 @@
 import enum
 import sqlite3
+import threading
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from aiogram.utils.callback_data import CallbackData
 
 from config import TOKEN
+import datetime
+import time
+import sqlite3 as sl
+
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 
 bot = Bot(TOKEN)
 dp = Dispatcher(bot)
@@ -31,11 +40,12 @@ class User:
 
 
 class Task:
-    def __init__(self, url, title, time_pref, sort):
+    def __init__(self, url, title, time_pref, sort, user_id):
         self.url = url
         self.title = title
         self.time_pref = time_pref
         self.sort = sort
+        self.user_id = user_id
 
 
 class TimePreferences:
@@ -88,10 +98,10 @@ async def create_task(message: types.Message):
     try:
         for id, i in enumerate(tasks[message.from_user['username']]):
             builder = types.InlineKeyboardButton("Удалить эту задачу: ", callback_data=delete_callback.new(id=id))
-            await message.reply("*URL: *" + i.url + "\n"
-                                + "*Название: *" + i.title + "\n"
-                                + "*Время обновления: *" + i.time_pref + "\n"
-                                + "*Сортировка: *" + i.sort, parse_mode="Markdown",
+            await message.reply("*URL: *" + i.task.url + "\n"
+                                + "*Название: *" + i.task.title + "\n"
+                                + "*Время обновления: *" + i.task.time_pref + "\n"
+                                + "*Сортировка: *" + i.task.sort, parse_mode="Markdown",
                                 reply_markup=types.InlineKeyboardMarkup().add(builder))
     except KeyError:
         await message.reply("Нет текущих задач")
@@ -101,15 +111,11 @@ async def create_task(message: types.Message):
 async def delete_message(query: types.CallbackQuery, callback_data: dict):
     id = callback_data["id"]
     try:
+        threading.Thread(target=tasks[query.from_user['username']][int(id)].stop_tracking).start()
         del tasks[query.from_user['username']][int(id)]
-        await query.answer("text")
-    except IndexError:
+        await query.answer("Успешно")
+    except Exception:
         await query.answer("Ошибка!")
-
-
-@dp.message_handler(lambda message: message.text == "Отмена")
-async def del_not_ok(message: types.Message):
-    await message.reply("Удаление отменено")
 
 
 @dp.message_handler(lambda message: message.text == "Частота обновлений")
@@ -199,18 +205,182 @@ async def create_task_message(message: types.Message):
         current_user.sort = SortedPrice.CHEAP
         await message.reply("Задача создана", reply_markup=keyboard)
         try:
-            tasks[username] \
-                .append(Task(current_user.url, current_user.title, current_user.time_pref, current_user.sort))
+            tasks[username].append(
+                Tracking(Task(current_user.url, current_user.title, current_user.time_pref, current_user.sort,
+                              message.from_user.id)))
         except KeyError:
-            tasks[username] = [Task(current_user.url, current_user.title, current_user.time_pref, current_user.sort)]
-    elif message.text == SortedPrice.EXPENSIVE:
+            tasks[username] = [
+                Tracking(Task(current_user.url, current_user.title, current_user.time_pref, current_user.sort,
+                              message.from_user.id))]
+        th = threading.Thread(target=tasks[username][-1].start_tracking)
+        th.start()
+    elif message.text == SortedPrice.EXPENSIVE and current_user.time_pref is not None:
         current_user.sort = SortedPrice.EXPENSIVE
         await message.reply("Задача создана", reply_markup=keyboard)
         try:
-            tasks[username] \
-                .append(Task(current_user.url, current_user.title, current_user.time_pref, current_user.sort))
+            tasks[username].append(
+                Tracking(Task(current_user.url, current_user.title, current_user.time_pref, current_user.sort,
+                              message.from_user.id)))
         except KeyError:
-            tasks[username] = [Task(current_user.url, current_user.title, current_user.time_pref, current_user.sort)]
+            tasks[username] = [
+                Tracking(Task(current_user.url, current_user.title, current_user.time_pref, current_user.sort,
+                              message.from_user.id))]
+        th = threading.Thread(target=tasks[username][-1].start_tracking)
+        th.start()
+
+
+### TRACKING SERVICE
+
+
+def recursive_space(param):
+    if param[0] == " ":
+        param = param[1:]
+        return recursive_space(param)
+    else:
+        return param
+
+
+class Tracking:
+    service = Service(executable_path="chromedriver.exe")
+
+    def __init__(self, task: Task):
+        self.active = False
+        self.task = task
+        self.products = list()
+
+    def track(self, first_launch=False):
+        try:
+            self.products = []
+            driver = webdriver.Chrome()
+            driver.get(self.task.url)
+            if bool(driver.find_elements(By.CLASS_NAME, "items-extraTitle-JFe8_")):
+                elem = driver.find_elements(By.XPATH, "//div[contains(concat(' ', @class, ' '), 'items-items-kAJAg')]")
+                list_ = elem[0].text.split("\n")
+                for index, i in enumerate(list_):
+                    try:
+                        if "₽" in list_[index + 1] and type(
+                                int(list_[index + 1].replace("₽", "").replace(" ", ""))) == int:
+                            self.products.append(Product(recursive_space(list_[index]), list_[index + 1]))
+                    except Exception:
+                        pass
+            else:
+                elem = driver.find_element(By.CLASS_NAME, "styles-module-root-OK422")
+                for i in range(3):
+                    driver.get(self.task.url + "&p=" + str(i + 1))
+                    if bool(driver.find_elements(By.CLASS_NAME, "items-extraTitle-JFe8_")):
+                        elem = driver.find_elements(By.XPATH,
+                                                    "//div[contains(concat(' ', @class, ' '), 'items-items-kAJAg')]")
+                        list_ = elem[0].text.split("\n")
+                        for index, i in enumerate(list_):
+                            try:
+                                if "₽" in list_[index + 1] and type(
+                                        int(list_[index + 1].replace("₽", "").replace(" ", ""))) == int:
+                                    self.products.append(Product(recursive_space(list_[index]), list_[index + 1]))
+                            except Exception:
+                                pass
+            con = sl.connect('database.db')
+            if first_launch:
+                with con:
+                    con.execute("""
+                        CREATE TABLE IF NOT EXISTS PRODUCTS (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            name TEXT,
+                            price TEXT,
+                            user_id TEXT
+                        );
+                    """)
+                sql = 'INSERT INTO PRODUCTS (name, price, url, user_id) values (?, ?, ?, ?)'
+                data = []
+                for i in self.products:
+                    data.append((i.title, i.price, self.task.user_id))
+                with con:
+                    con.executemany(sql, data)
+
+            else:
+                with con:
+                    data = list(con.execute(f"SELECT * FROM PRODUCTS WHERE user_id = '{self.task.user_id}'"))
+
+                ins = 'INSERT INTO PRODUCTS (name, price, url, user_id) values (?, ?, ?, ?)'
+                new_data = []
+                for i in self.products:
+                    new_data.append((i.title, i.price, self.task.user_id))
+
+                to_ret = [i for i in new_data if i not in data]
+
+                with con:
+                    con.execute(f"DELETE FROM PRODUCTS WHERE user_id = '{self.task.user_id}")
+
+                with con:
+                    con.executemany(ins, data)
+                return to_ret
+            con.close()
+            driver.quit()
+        except Exception:
+            self.track(first_launch=first_launch)
+            print("SSSS")
+
+    def start_tracking(self):
+        self.track(first_launch=True)
+        self.active = True
+
+        if self.task.time_pref == TimePreferences.NOW:
+            while self.active:
+                track = self.track()
+                if type(track) == list:
+                    for i in track:
+                        bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}\nCсылка:")
+                time.sleep(10)
+        elif self.task.time_pref == TimePreferences.EVENING:
+            while self.active:
+                current_time = datetime.time()
+                if current_time.hour == 19 and current_time.minute == 0:
+                    count = 1
+                    track = self.track()
+                    if type(track) == list:
+                        for i in track:
+                            bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}")
+                    time.sleep(86400)
+
+        elif self.task.time_pref == TimePreferences.MORNING:
+            while self.active:
+                current_time = datetime.time()
+                if current_time.hour == 9 and current_time.minute == 0:
+                    track = self.track()
+                    if type(track) == list:
+                        for i in track:
+                            bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}")
+                    time.sleep(86400)
+        elif self.task.time_pref == TimePreferences.ONCE_A_WEEK:
+            while self.active:
+                track = self.track()
+                if type(track) == list:
+                    for i in track:
+                        bot.send_message(i[-1], f"Появилось новое объявление\nНазвание: {i[0]}\nЦена: {i[1]}")
+                time.sleep(604800)
+
+    def stop_tracking(self):
+        self.active = False
+
+
+def grouper(iterable, n):
+    args = [iter(iterable)] * n
+    return zip(*args)
+
+
+class Product:
+    def __init__(self, title, price):
+        self.title = title
+        self.price = price
+
+    def __str__(self):
+        return self.title + " " + self.price
+
+
+async def send_message(chat_id, message):
+    await bot.send_message(chat_id, message)
+
+
+### STARTING BOT
 
 
 if __name__ == "__main__":
