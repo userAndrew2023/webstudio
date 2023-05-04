@@ -253,7 +253,6 @@ class Tracking:
     service = Service(executable_path="chromedriver.exe")
 
     def __init__(self, task: Task):
-        self.active = False
         self.task = task
         self.products = list()
 
@@ -292,15 +291,6 @@ class Tracking:
                                 pass
             con = sl.connect('database.db')
             if first_launch:
-                with con:
-                    con.execute("""
-                        CREATE TABLE IF NOT EXISTS PRODUCTS (
-                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                            name TEXT,
-                            price TEXT,
-                            user_id TEXT
-                        );
-                    """)
                 sql = 'INSERT INTO PRODUCTS (name, price, url, user_id) values (?, ?, ?, ?)'
                 data = []
                 for i in self.products:
@@ -332,16 +322,44 @@ class Tracking:
             self.track(first_launch=first_launch)
             print("SSSS")
 
+    def check_task_in_db(self):
+        con = sl.connect("database.db")
+
+        sql = f"SELECT * FROM tasks WHERE " \
+              f"(url = {self.task.url}) AND (user_id = {self.task.user_id}) AND (title = {self.task.title})"
+        data = con.execute(sql)
+
+        con.close()
+
+        if len(list(data)) == 0:
+            return False
+        return True
+
     def start_tracking(self):
         self.track(first_launch=True)
-        self.active = True
 
         con = sl.connect('database.db')
         con.executemany("INSERT INTO TASKS (title, url, user_id) values (?, ?, ?)", [(self.task.title, self.task.url,
                                                                                       self.task.user_id)])
 
+        con = sl.connect('database.db')
+        sql = "INSERT INTO tasks (url, title, time_pref, sort, user_id) VALUES (?, ?, ?, ?, ?)"
+
+        task = self.task
+        data = [
+            (task.url, task.title, task.time_pref, task.sort, task.user_id)
+        ]
+
+        con.executemany(sql, data)
+
+        con.close()
+
         if self.task.time_pref == TimePreferences.NOW:
-            while self.active:
+            while True:
+
+                if not self.check_task_in_db():
+                    break
+
                 track = self.track()
                 if type(track) == list:
                     for i in track:
@@ -349,6 +367,10 @@ class Tracking:
                 time.sleep(60 * 15)
         elif self.task.time_pref == TimePreferences.EVENING:
             while self.active:
+
+                if not self.check_task_in_db():
+                    break
+
                 current_time = datetime.time()
                 if current_time.hour == 19 and current_time.minute == 0:
                     count = 1
@@ -360,6 +382,10 @@ class Tracking:
 
         elif self.task.time_pref == TimePreferences.MORNING:
             while self.active:
+
+                if not self.check_task_in_db():
+                    break
+
                 current_time = datetime.time()
                 if current_time.hour == 9 and current_time.minute == 0:
                     track = self.track()
@@ -369,6 +395,10 @@ class Tracking:
                     time.sleep(86400)
         elif self.task.time_pref == TimePreferences.ONCE_A_WEEK:
             while self.active:
+
+                if not self.check_task_in_db():
+                    break
+
                 track = self.track()
                 if type(track) == list:
                     for i in track:
