@@ -70,6 +70,7 @@ def get_sales(url):
 
 bot = TeleBot("5979613690:AAGREX4z-atI5hchjXJZk5jPTeiPF8zlqS4")
 con = pymysql.connect(host="sql8.freesqldatabase.com", user="sql8618457", password="2WlpnRqI9a", database="sql8618457")
+con.ping()
 
 
 def main_menu(message):
@@ -157,7 +158,6 @@ def handler(message: types.Message):
                 else:
                     bot.send_message(message.chat.id, "Укажите имя новой задачи", reply_markup=markup)
                     users[message.chat.id] = User(action=Actions.ACTION_CREATE_TASK, id=message.chat.id)
-            con.commit()
 
     elif message.text == "📱 Контакты":
         bot.send_message(message.chat.id, """Техническая поддержка Dobby.Avito:\n+7 800 777-08-35\ninfo@dobby.plus""")
