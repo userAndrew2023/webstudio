@@ -69,7 +69,7 @@ def get_sales(url):
 
 
 bot = TeleBot("5979613690:AAGREX4z-atI5hchjXJZk5jPTeiPF8zlqS4")
-con = pymysql.connect(host="localhost", user="root", password="1234", database="avito")
+con = pymysql.connect(host="sql8.freesqldatabase.com", user="sql8618457", password="2WlpnRqI9a", database="sql8618457")
 
 
 def main_menu(message):
@@ -233,7 +233,7 @@ def handler(message: types.Message):
             if len(fetchall) == 0:
                 cursor.execute(f"INSERT INTO `users` (tg_id, tasks) VALUES ('{message.chat.id}', '1')")
             else:
-                cursor.execute(f"UPDATE `avito`.`users` SET `tasks` = '{int(fetchall[0][-1]) + 1}' WHERE (`tg_id` = "
+                cursor.execute(f"UPDATE `users` SET `tasks` = '{int(fetchall[0][-1]) + 1}' WHERE (`tg_id` = "
                                f"'{message.chat.id}')")
             con.commit()
             cursor.execute("INSERT INTO `tasks` (name, url, time, sort) VALUES "
