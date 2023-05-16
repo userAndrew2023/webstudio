@@ -126,6 +126,7 @@ def start(message: types.Message):
 @bot.message_handler()
 def handler(message: types.Message):
     if message.text == "😎 Аккаунт":
+        con.ping()
         with con.cursor() as cursor:
 
             q = f"SELECT * FROM `users` WHERE tg_id = '{message.chat.id}'"
@@ -137,11 +138,12 @@ def handler(message: types.Message):
                 tasks_last = 5 - int(fetchall[0][-1])
 
             bot.send_message(message.chat.id, f"Аккаунт: {message.from_user.id}\nОсталось задач: {tasks_last}")
-        con.commit()
+        con.ping()
     elif message.text == "🆕 Создать задачу":
         kb = [
             types.KeyboardButton("Главное меню")
         ]
+        con.ping()
         with con.cursor() as cursor:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add(*kb, row_width=1)
