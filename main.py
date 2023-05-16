@@ -74,7 +74,8 @@ def get_sales(url):
 
 
 bot = TeleBot("5979613690:AAGREX4z-atI5hchjXJZk5jPTeiPF8zlqS4")
-con = pymysql.connect(host="localhost", user="root", password="1234", database="avito")
+con = pymysql.connect(host="sql8.freesqldatabase.com", user="sql8618457", password="2WlpnRqI9a", database="sql8618457")
+con.ping()
 
 
 def main_menu(message):
