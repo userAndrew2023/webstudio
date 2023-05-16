@@ -96,6 +96,7 @@ def track(task: User):
     sales = get_sales(task.url)
     if task.time_pref == TimePreferences.NOW:
         while True:
+            con.ping()
             with con.cursor() as cursor:
                 cursor.execute(f"SELECT * FROM `tasks` WHERE id = '{task.id}'")
                 if len(cursor.fetchall()) == 0:
@@ -108,6 +109,7 @@ def track(task: User):
             sales = new
     elif task.time_pref == TimePreferences.MORNING:
         while True:
+            con.ping()
             with con.cursor() as cursor:
                 cursor.execute(f"SELECT * FROM `tasks` WHERE id = '{task.id}'")
                 if len(cursor.fetchall()) == 0:
@@ -123,6 +125,7 @@ def track(task: User):
 
     elif task.time_pref == TimePreferences.EVENING:
         while True:
+            con.ping()
             with con.cursor() as cursor:
                 cursor.execute(f"SELECT * FROM `tasks` WHERE id = '{task.id}'")
                 if len(cursor.fetchall()) == 0:
@@ -137,6 +140,7 @@ def track(task: User):
                 sales = new
     elif task.time_pref == TimePreferences.ONCE_A_WEEK:
         while True:
+            con.ping()
             with con.cursor() as cursor:
                 cursor.execute(f"SELECT * FROM `tasks` WHERE id = '{task.id}'")
                 if len(cursor.fetchall()) == 0:
@@ -157,6 +161,7 @@ def start(message: types.Message):
 @bot.message_handler()
 def handler(message: types.Message):
     if message.text == "😎 Аккаунт":
+        con.ping()
         with con.cursor() as cursor:
 
             q = f"SELECT * FROM `users` WHERE tg_id = '{message.chat.id}'"
@@ -173,6 +178,7 @@ def handler(message: types.Message):
         kb = [
             types.KeyboardButton("Главное меню")
         ]
+        con.ping()
         with con.cursor() as cursor:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             q = f"SELECT * FROM `tasks` WHERE tg_id = '{message.chat.id}'"
@@ -188,6 +194,7 @@ def handler(message: types.Message):
         kb = [
             types.KeyboardButton("Главное меню")
         ]
+        con.ping()
         with con.cursor() as cursor:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add(*kb, row_width=1)
