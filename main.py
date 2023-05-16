@@ -28,6 +28,7 @@ class Actions(enum.Enum):
     ACTION_TITLE_UPLOADED = 3
     ACTION_TIME_UPLOADED = 4
     ACTION_SORT_UPLOADED = 5
+    ACTION_TASK_DELETE = 6
 
 
 class User:
@@ -56,21 +57,24 @@ class SortedPrice:
 
 
 def get_sales(url):
-    driver = webdriver.Chrome()
-    driver.get(url)
-    elem2 = driver.find_element(By.XPATH, "//div[@data-marker='catalog-serp']")
-    links = driver.find_elements(By.XPATH, "//a[@class='link-link-MbQDP link-design-default-_nSbv title-root-zZCwT "
-                                           "iva-item-title-py3i_ title-listRedesign-_rejR title-root_maxHeight-X6PsH']")
-    elem = elem2.find_elements(By.CLASS_NAME, "iva-item-body-KLUuy")
-    to_list = []
-    for index, i in enumerate(elem):
-        to_list.append((i.text.split("\n")[0], i.text.split("\n")[1], links[index].get_attribute("href")))
-    return to_list
+    try:
+        driver = webdriver.Chrome()
+        driver.get(url)
+        elem2 = driver.find_element(By.XPATH, "//div[@data-marker='catalog-serp']")
+        links = driver.find_elements(By.XPATH, "//a[@class='link-link-MbQDP link-design-default-_nSbv title-root-zZCwT "
+                                               "iva-item-title-py3i_ title-listRedesign-_rejR "
+                                               "title-root_maxHeight-X6PsH']")
+        elem = elem2.find_elements(By.CLASS_NAME, "iva-item-body-KLUuy")
+        to_list = []
+        for index, i in enumerate(elem):
+            to_list.append((i.text.split("\n")[0], i.text.split("\n")[1], links[index].get_attribute("href")))
+        return to_list
+    except Exception:
+        return get_sales(url)
 
 
 bot = TeleBot("5979613690:AAGREX4z-atI5hchjXJZk5jPTeiPF8zlqS4")
-con = pymysql.connect(host="sql8.freesqldatabase.com", user="sql8618457", password="2WlpnRqI9a", database="sql8618457")
-con.ping()
+con = pymysql.connect(host="localhost", user="root", password="1234", database="avito")
 
 
 def main_menu(message):
@@ -91,31 +95,57 @@ def track(task: User):
     sales = get_sales(task.url)
     if task.time_pref == TimePreferences.NOW:
         while True:
+            with con.cursor() as cursor:
+                cursor.execute(f"SELECT * FROM `tasks` WHERE id = '{task.id}'")
+                if len(cursor.fetchall()) == 0:
+                    break
+                con.commit()
             new = get_sales(url=task.url)
-            bot.send_message(task.id, str([i for i in new if i not in sales]))
             for j in [i for i in new if i not in sales]:
                 bot.send_message(task.id, j[0] + " - " + j[1] + " - " + j[2])
             time.sleep(10)
+            sales = new
     elif task.time_pref == TimePreferences.MORNING:
         while True:
+            with con.cursor() as cursor:
+                cursor.execute(f"SELECT * FROM `tasks` WHERE id = '{task.id}'")
+                if len(cursor.fetchall()) == 0:
+                    break
+                con.commit()
             d = datetime.now()
             if d.hour == 9:
                 new = get_sales(url=task.url)
-                bot.send_message(task.id, str([i for i in new if i not in sales]))
-                time.sleep(60 * 60 * 24)
+                for j in [i for i in new if i not in sales]:
+                    bot.send_message(task.id, j[0] + " - " + j[1] + " - " + j[2])
+                    time.sleep(60 * 60 * 24)
+                sales = new
 
     elif task.time_pref == TimePreferences.EVENING:
         while True:
+            with con.cursor() as cursor:
+                cursor.execute(f"SELECT * FROM `tasks` WHERE id = '{task.id}'")
+                if len(cursor.fetchall()) == 0:
+                    break
+                con.commit()
             d = datetime.now()
             if d.hour == 19:
                 new = get_sales(url=task.url)
-                bot.send_message(task.id, str([i for i in new if i not in sales]))
-                time.sleep(60 * 60 * 24)
+                for j in [i for i in new if i not in sales]:
+                    bot.send_message(task.id, j[0] + " - " + j[1] + " - " + j[2])
+                    time.sleep(60 * 60 * 24)
+                sales = new
     elif task.time_pref == TimePreferences.ONCE_A_WEEK:
         while True:
+            with con.cursor() as cursor:
+                cursor.execute(f"SELECT * FROM `tasks` WHERE id = '{task.id}'")
+                if len(cursor.fetchall()) == 0:
+                    break
+                con.commit()
             new = get_sales(url=task.url)
-            bot.send_message(task.id, str([i for i in new if i not in sales]))
-            time.sleep(60 * 60 * 24 * 7)
+            for j in [i for i in new if i not in sales]:
+                bot.send_message(task.id, j[0] + " - " + j[1] + " - " + j[2])
+                time.sleep(60 * 60 * 24 * 7)
+            sales = new
 
 
 @bot.message_handler(commands=['start'])
@@ -126,7 +156,6 @@ def start(message: types.Message):
 @bot.message_handler()
 def handler(message: types.Message):
     if message.text == "😎 Аккаунт":
-        con.ping()
         with con.cursor() as cursor:
 
             q = f"SELECT * FROM `users` WHERE tg_id = '{message.chat.id}'"
@@ -138,12 +167,26 @@ def handler(message: types.Message):
                 tasks_last = 5 - int(fetchall[0][-1])
 
             bot.send_message(message.chat.id, f"Аккаунт: {message.from_user.id}\nОсталось задач: {tasks_last}")
-        con.ping()
+        con.commit()
+    elif message.text == "❌ Удалить задачу":
+        kb = [
+            types.KeyboardButton("Главное меню")
+        ]
+        with con.cursor() as cursor:
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            q = f"SELECT * FROM `tasks` WHERE tg_id = '{message.chat.id}'"
+            cursor.execute(q)
+            fetchall = cursor.fetchall()
+            for index, i in enumerate(fetchall):
+                markup.add(f"{str(index)}. {i[1]} ({i[0]})")
+            markup.add(*kb, row_width=1)
+        bot.send_message(message.chat.id, "Выберите из пункта и удалите")
+        users[message.chat.id] = Actions.ACTION_TASK_DELETE
+
     elif message.text == "🆕 Создать задачу":
         kb = [
             types.KeyboardButton("Главное меню")
         ]
-        con.ping()
         with con.cursor() as cursor:
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             markup.add(*kb, row_width=1)
@@ -160,6 +203,7 @@ def handler(message: types.Message):
                 else:
                     bot.send_message(message.chat.id, "Укажите имя новой задачи", reply_markup=markup)
                     users[message.chat.id] = User(action=Actions.ACTION_CREATE_TASK, id=message.chat.id)
+            con.commit()
 
     elif message.text == "📱 Контакты":
         bot.send_message(message.chat.id, """Техническая поддержка Dobby.Avito:\n+7 800 777-08-35\ninfo@dobby.plus""")
@@ -235,15 +279,23 @@ def handler(message: types.Message):
             if len(fetchall) == 0:
                 cursor.execute(f"INSERT INTO `users` (tg_id, tasks) VALUES ('{message.chat.id}', '1')")
             else:
-                cursor.execute(f"UPDATE `users` SET `tasks` = '{int(fetchall[0][-1]) + 1}' WHERE (`tg_id` = "
+                cursor.execute(f"UPDATE `avito`.`users` SET `tasks` = '{int(fetchall[0][-1]) + 1}' WHERE (`tg_id` = "
                                f"'{message.chat.id}')")
             con.commit()
-            cursor.execute("INSERT INTO `tasks` (name, url, time, sort) VALUES "
+            cursor.execute("INSERT INTO `tasks` (name, url, time, sort, tg_id) VALUES "
                            f"('{users[message.chat.id].title}', '{users[message.chat.id].url}', "
-                           f"'{users[message.chat.id].time_pref}', '{users[message.chat.id].sort}')")
+                           f"'{users[message.chat.id].time_pref}', '{users[message.chat.id].sort}', "
+                           f"'{message.chat.id}')")
             threading.Thread(target=track, args=[users[message.chat.id]]).start()
 
         con.commit()
+    elif users[message.chat.id] == Actions.ACTION_TASK_DELETE:
+        with con.cursor() as cursor:
+            cursor.execute(f"DELETE FROM `tasks` WHERE tg_id = '{message.chat.id}' AND id = "
+                           f"'{message.text.split(')')[-1][:-1]}'")
+            con.commit()
+        users[message.chat.id] = Actions.ACTION_START
+        main_menu(message)
 
 
 bot.infinity_polling()
